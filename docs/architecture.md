@@ -28,22 +28,27 @@ OctoFit Tracker is a three-tier application for a school fitness program. The st
 
 ## Implementation decisions
 
-Record your plan here before editing code.
-
-- Presentation tier decision:
-- Logic tier decision:
-- Data tier decision:
-- Activity tracking approach:
-- Team management approach:
-- Leaderboard approach:
-- Workout suggestions approach:
+- Presentation tier decision: keep UI concerns in React components and use a single shared API client to call relative `/api` URLs; render loading, empty, and error states in the components so the browser experience matches the backend contract without adding auth or extra state management.
+- Logic tier decision: keep Express route handlers thin and move the business logic into the service layer, validating request payloads, looking up user/team records, and returning deliberate 4xx responses for malformed IDs or missing data instead of leaking database cast errors as 500s.
+- Data tier decision: use Mongoose schemas for validation and defaults, with array defaults and required fields in the models, then seed representative users, teams, activities, and workouts idempotently so tests can safely reset and rerun against a clean in-memory MongoDB instance.
+- Activity tracking approach: accept `userId`, `teamId`, `type`, and `minutes`; validate references before creating the record; compute `points` and `occurredAt` server-side; and reject invalid or unknown identifiers with a 4xx.
+- Team management approach: require a `name` and `mascot`, default `members` to an empty array, and persist members as ObjectIds while exposing their IDs in the API response so the frontend can render membership correctly.
+- Leaderboard approach: aggregate activity totals per team, sum points, sort descending, and assign a 1-based `rank` in the response so the UI can show ordered standings with no client-side sorting assumptions.
+- Workout suggestions approach: match the logged-in user's email to a seeded user, inspect their recent activity and `fitnessGoal`, then return the top workout suggestion whose `focus` matches the current pattern and include a readable `reason` string explaining the recommendation.
 
 ## Test plan
 
-Record the commands you run and what each failure means.
+Run the checks in this order so each failure points to a single missing layer and keeps the work incremental.
 
 - Data-tier command: `npm run test:data --prefix octofit-tracker/backend`
+  - Confirms schema validation and idempotent seed behavior before API logic is introduced.
 - API command: `npm run test:api --prefix octofit-tracker/backend`
+  - Exercises route behavior for activities, teams, leaderboard sorting, and workout recommendation logic.
 - Frontend command: `npm test --prefix octofit-tracker/frontend`
+  - Verifies the presentation layer is fetching the correct URLs and rendering loading, empty, and error states correctly.
 - Backend build command: `npm run build --prefix octofit-tracker/backend`
+  - Ensures TypeScript types and server logic compile without exposing runtime-only workarounds.
 - Frontend build command: `npm run build --prefix octofit-tracker/frontend`
+  - Confirms the React app compiles and bundle output is valid for Vite.
+
+The smallest safe flow is data model validation → API contracts → frontend rendering → final build verification. That order minimizes rework because the UI is built on the API contract, and the API contract is built on the data model contract.
